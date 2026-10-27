@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#14213d">
+<title>Leitor de códigos</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14213d;--mut:#5b6678;--line:#d6dce4;--laser:#e5173f;--ok:#12805c;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1522;--card:#18223a;--ink:#eaf0fa;--mut:#9aa7bd;--line:#2a3652;--laser:#ff4d6d;--ok:#3ccf9b;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--laser);outline-offset:2px}
+.cam{position:relative;background:#000;height:38vh;min-height:220px;overflow:hidden;flex:none}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.frame{position:absolute;inset:18% 8%;border:2px solid rgba(255,255,255,.55);border-radius:10px;pointer-events:none}
+.laser{position:absolute;left:0;right:0;top:50%;height:2px;background:var(--laser);box-shadow:0 0 12px var(--laser);animation:sweep 2.2s ease-in-out infinite alternate}
+@keyframes sweep{from{top:8%}to{top:92%}}
+@media (prefers-reduced-motion:reduce){.laser{animation:none}}
+.cam.hit .frame{border-color:var(--ok);border-width:4px}
+.msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;color:#fff;background:rgba(0,0,0,.8)}
+.msg.on{display:flex}
+.msg button{margin-top:12px;background:var(--laser);border:0;color:#fff;padding:10px 18px;border-radius:8px}
+.bar{display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--card);border-bottom:1px solid var(--line);flex:none}
+.bar .last{flex:1;min-width:0}
+.last small{display:block;color:var(--mut)}
+.last b{display:block;font:600 17px ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:8px 14px;white-space:nowrap}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.list{flex:1;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.empty{margin:auto;text-align:center;color:var(--mut);max-width:28ch}
+.row{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+.row img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--line);flex:none;border:0;padding:0}
+.row .t{flex:1;min-width:0}
+.row .c{font:600 15px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.row .m{color:var(--mut);font-size:13px}
+.row .x{border:0;background:transparent;color:var(--mut);font-size:22px;padding:8px 10px}
+.actions{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--line);flex:none}
+.actions button{flex:1;border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:10px;padding:12px 6px;font-weight:600}
+.actions button.sec{background:transparent;color:var(--ink)}
+.actions button:disabled{opacity:.4}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
+.toast.on{opacity:1}
+dialog{border:0;border-radius:12px;padding:0;max-width:92vw;background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog img{display:block;max-width:92vw;max-height:70vh}
+dialog p{margin:0;padding:10px 14px;font:600 14px ui-monospace,monospace;word-break:break-all}
+dialog form{padding:0 14px 12px;text-align:right;margin:0}
+</style>
+</head>
+<body>
+<div class="cam" id="cam">
+  <video id="video" playsinline muted></video>
+  <div class="frame"></div><div class="laser"></div>
+  <div class="msg" id="camMsg"><div><p id="camTxt"></p><button id="retry">Ativar câmera</button></div></div>
+</div>
+<div class="bar">
+  <div class="last"><small id="lastLbl">Aponte a câmera para um código</small><b id="lastTxt">&nbsp;</b></div>
+  <button class="chip" id="dup" aria-pressed="true">Sem repetidos</button>
+  <button class="chip" id="manual">Digitar</button>
+</div>
+<div class="list" id="list"></div>
+<div class="actions">
+  <button id="xlsx" disabled>Planilha</button>
+  <button id="txt" class="sec" disabled>TXT</button>
+  <button id="zip" class="sec" disabled>Fotos</button>
+  <button id="clear" class="sec" disabled>Limpar</button>
+</div>
+<div class="toast" id="toast"></div>
+<dialog id="dlg"><img id="dImg" alt="Foto do registro"><p id="dTxt"></p><form method="dialog"><button class="chip">Fechar</button></form></dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const video = $('#video'), listEl = $('#list');
+let db, items = [], reader, lastText = '', lastTime = 0, noDup = true;
+
+/* ---------- Banco local (IndexedDB) ---------- */
+const openDB = () => new Promise((ok, no) => {
+  const r = indexedDB.open('leitor-codigos', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('scans', {keyPath: 'id', autoIncrement: true});
+  r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+});
+const store = m => db.transaction('scans', m).objectStore('scans');
+const req = r => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+async function load() { items = await req(store('readonly').getAll()); render(); }
+
+/* ---------- Utilidades ---------- */
+const fmtDate = t => new Date(t).toLocaleString('pt-BR');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1800); }
+function beep() {
+  try { const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 1100; g.gain.value = .15; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + .1); } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(60);
+}
+function snap() {
+  if (!video.videoWidth) return '';
+  const w = Math.min(720, video.videoWidth), h = Math.round(video.videoHeight * w / video.videoWidth);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(video, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', .7);
+}
+
+/* ---------- Registro ---------- */
+async function add(text, fmt) {
+  text = text.trim(); if (!text) return;
+  if (noDup && items.some(i => i.text === text)) { toast('Código já registrado'); return; }
+  await req(store('readwrite').add({ts: Date.now(), fmt, text, photo: snap()}));
+  $('#lastLbl').textContent = fmt + ' · ' + fmtDate(Date.now()); $('#lastTxt').textContent = text;
+  $('#cam').classList.add('hit'); setTimeout(() => $('#cam').classList.remove('hit'), 500);
+  beep(); await load(); listEl.scrollTop = 0;
+}
+function onHit(r) {
+  const text = r.getText(), now = Date.now();
+  if (text === lastText && now - lastTime < 2500) { lastTime = now; return; }
+  lastText = text; lastTime = now;
+  add(text, ZXing.BarcodeFormat[r.getBarcodeFormat()] || 'DESCONHECIDO');
+}
+
+function render() {
+  const has = items.length > 0;
+  ['#xlsx', '#txt', '#zip', '#clear'].forEach(s => $(s).disabled = !has);
+  if (!has) { listEl.innerHTML = '<div class="empty">Nenhum código lido ainda. Aponte a câmera e o registro entra aqui sozinho.</div>'; return; }
+  listEl.innerHTML = items.slice().reverse().map((i, n) =>
+    `<div class="row" data-id="${i.id}">
+      <img src="${i.photo}" alt="Foto" data-act="view">
+      <div class="t"><div class="c">${esc(i.text)}</div><div class="m">${i.fmt} · ${fmtDate(i.ts)}</div></div>
+      <button class="x" data-act="del" aria-label="Excluir registro">×</button></div>`).join('');
+}
+listEl.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = +b.closest('.row').dataset.id, it = items.find(i => i.id === id);
+  if (b.dataset.act === 'del') { if (confirm('Excluir este registro?')) { await req(store('readwrite').delete(id)); load(); } }
+  else { $('#dImg').src = it.photo; $('#dTxt').textContent = it.text; $('#dlg').showModal(); }
+});
+
+/* ---------- Câmera / leitura ---------- */
+async function startCam() {
+  $('#camMsg').classList.remove('on');
+  try {
+    const hints = new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    reader = new ZXing.BrowserMultiFormatReader(hints, 250);
+    await reader.decodeFromConstraints({video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}}}, video, (r) => { if (r) onHit(r); });
+  } catch (err) {
+    $('#camTxt').textContent = 'Não foi possível abrir a câmera. Permita o acesso à câmera nas configurações do navegador e abra o app por um endereço https.';
+    $('#camMsg').classList.add('on');
+  }
+}
+$('#retry').onclick = startCam;
+document.addEventListener('visibilitychange', () => { if (document.hidden) { reader && reader.reset(); } else startCam(); });
+
+$('#dup').onclick = e => { noDup = !noDup; e.target.setAttribute('aria-pressed', noDup); toast(noDup ? 'Repetidos ignorados' : 'Repetidos permitidos'); };
+$('#manual').onclick = () => { const t = prompt('Digite o código (ex.: linha do cheque):'); if (t) add(t, 'MANUAL'); };
+
+/* ---------- Exportação ---------- */
+function save(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+const photoName = (i, n) => `foto_${String(n + 1).padStart(4, '0')}.jpg`;
+
+$('#xlsx').onclick = () => {
+  const rows = [['Nº', 'Data/hora', 'Formato', 'Código', 'Arquivo da foto']];
+  items.forEach((i, n) => rows.push([n + 1, fmtDate(i.ts), i.fmt, i.text, photoName(i, n)]));
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch: 5}, {wch: 20}, {wch: 14}, {wch: 48}, {wch: 18}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Códigos');
+  XLSX.writeFile(wb, `codigos_${stamp()}.xlsx`);
+};
+$('#txt').onclick = () => save(new Blob([items.map(i => i.text).join('\r\n')], {type: 'text/plain;charset=utf-8'}), `codigos_${stamp()}.txt`);
+$('#zip').onclick = async () => {
+  toast('Gerando arquivo…');
+  const z = new JSZip(), f = z.folder('fotos');
+  let csv = '\ufeffNº;Data/hora;Formato;Código;Arquivo da foto\r\n';
+  items.forEach((i, n) => {
+    f.file(photoName(i, n), i.photo.split(',')[1], {base64: true});
+    csv += `${n + 1};${fmtDate(i.ts)};${i.fmt};"${i.text.replace(/"/g, '""')}";${photoName(i, n)}\r\n`;
+  });
+  z.file('lista.csv', csv);
+  save(await z.generateAsync({type: 'blob'}), `fotos_codigos_${stamp()}.zip`);
+};
+$('#clear').onclick = async () => {
+  if (confirm('Apagar todos os registros e fotos? Exporte antes se precisar dos dados.')) { await req(store('readwrite').clear()); load(); }
+};
+
+/* ---------- Início ---------- */
+(async () => { db = await openDB(); await load(); startCam(); })();
+</script>
+</body>
+</html>
